@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aurora Weather Dashboard</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Axios -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <div id="app" class="container" style="max-width: 1000px;">
+        <header class="app-header">
+            <h1>Aurora Weather Dashboard</h1>
+            <p class="subtitle">Complete Frontend & Backend Technical Assessments</p>
+        </header>
+
+        <!-- TABS -->
+        <div style="display: flex; justify-content: center; gap: 16px; margin-bottom: 40px;">
+            <button class="btn" :style="{ opacity: activeTab === 'frontend' ? 1 : 0.5 }" @click="activeTab = 'frontend'">
+                🖥️ Frontend UI
+            </button>
+            <button class="btn" :style="{ opacity: activeTab === 'backend' ? 1 : 0.5 }" @click="activeTab = 'backend'">
+                🗄️ Backend CRUD
+            </button>
+        </div>
+
+        <!-- ================= FRONTEND SECTION ================= -->
+        <div v-if="activeTab === 'frontend'">
+            <form class="search-section" @submit.prevent="handleFrontendSearch">
+                <input 
+                    type="text" 
+                    class="search-input" 
+                    placeholder="Enter zip code, city, or landmark..." 
+                    v-model="frontendQuery" 
+                />
+                <button type="submit" class="btn" :disabled="frontendLoading">
+                    Search
+                </button>
+                <button type="button" class="btn btn-icon" @click="useCurrentLocation" :disabled="frontendLoading" title="Use My Location">
+                    📍
+                </button>
+            </form>
+
+            <div v-if="frontendError" class="error-message">⚠️ {{ frontendError }}</div>
+            
+            <div v-if="frontendLoading" class="loading-container">
+                <div class="loader"></div>
+                <p>Fetching live weather details...</p>
+            </div>
+
+            <div v-if="frontendWeather && !frontendLoading">
+                <div class="glass-panel weather-card">
+                    <h2 class="location-title">{{ frontendWeather.location }}</h2>
+                    
+                    <div class="current-weather">
+                        <div class="current-weather-main">
+                            <span class="weather-icon-large">{{ getWeatherIcon(frontendWeather.current.code) }}</span>
+                            <div class="temp-wrapper">
+                                <div class="temp-large">{{ frontendWeather.current.temp }}°</div>
+                                <div class="weather-desc">{{ getWeatherDesc(frontendWeather.current.code) }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="details-grid">
+                        <div class="detail-item glass-panel-inner">
+                            <span class="detail-label">Feels Like</span>
+                            <span class="detail-value">{{ frontendWeather.current.feelsLike }}°C</span>
+                        </div>
+                        <div class="detail-item glass-panel-inner">
+                            <span class="detail-label">Humidity</span>
+                            <span class="detail-value">{{ frontendWeather.current.humidity }}%</span>
+                        </div>
+                        <div class="detail-item glass-panel-inner">
+                            <span class="detail-label">Wind</span>
+                            <span class="detail-value">{{ frontendWeather.current.windSpeed }} km/h</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel forecast-container">
+                    <h3 class="forecast-title">5-Day Forecast</h3>
+                    <div class="forecast-grid">
+                        <div v-for="(day, idx) in frontendWeather.forecast" :key="idx" class="forecast-day glass-panel-inner hover-lift">
+                            <h4>{{ formatDate(day.date) }}</h4>
+                            <div class="forecast-icon">
+                                {{ getWeatherIcon(day.code) }}
+                            </div>
+                            <div class="forecast-desc">{{ getWeatherDesc(day.code) }}</div>
+                            <div class="forecast-temps">
+                                <span class="temp-max">{{ day.max }}°</span>
+                                <span class="temp-min">{{ day.min }}°</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= BACKEND SECTION ================= -->
+        <div v-if="activeTab === 'backend'">
+            <!-- CREATE / UPDATE FORM -->
+            <div class="glass-panel" style="margin-bottom: 40px;">
+                <h2 style="margin-bottom: 20px;">{{ editingId ? 'Update Record' : 'Create New Weather Record' }}</h2>
+                
+                <form @submit.prevent="handleSubmit" style="display: flex; flex-direction: column; gap: 16px;">
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                        <input type="text" class="search-input" placeholder="Location (e.g., Paris, NY, Zip Code)" v-model="form.location" required style="flex: 2; min-width: 200px;" />
+                        <input type="date" class="search-input" title="Start Date" v-model="form.start_date" required style="flex: 1; min-width: 150px;" />
+                        <input type="date" class="search-input" title="End Date" v-model="form.end_date" required style="flex: 1; min-width: 150px;" />
+                    </div>
+                    
+                    <div style="display: flex; gap: 16px;">
+                        <button type="submit" class="btn" :disabled="formLoading">
+                            {{ formLoading ? 'Saving...' : (editingId ? 'Save Changes' : 'Save Record') }}
+                        </button>
+                        <button type="button" class="btn" style="background: rgba(255,255,255,0.1);" @click="resetForm" v-if="editingId" :disabled="formLoading">
+                            Cancel
+                        </button>
+                    </div>
+                    
+                    <div v-if="formError" class="error-message" style="margin-bottom: 0;">{{ formError }}</div>
+                    <div v-if="formSuccess" style="color: #4ade80; padding: 12px; border-radius: 8px; background: rgba(74, 222, 128, 0.1); border: 1px solid rgba(74, 222, 128, 0.2);">{{ formSuccess }}</div>
+                </form>
+            </div>
+
+            <!-- READ: DISPLAY RECORDS -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                <h2>Database Records ({{ records.length }})</h2>
+                <button class="btn" style="padding: 10px 20px; font-size: 1rem; background: rgba(255,255,255,0.1);" @click="fetchRecords">↻ Refresh</button>
+            </div>
+
+            <div v-if="recordsLoading" class="loading-container">
+                <div class="loader"></div>
+            </div>
+
+            <div v-else-if="records.length === 0" style="text-align: center; color: var(--text-muted); padding: 40px;" class="glass-panel">
+                No weather records found. Create one above!
+            </div>
+
+            <div v-for="record in records" :key="record.id" class="glass-panel" style="padding: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;">
+                    <div>
+                        <h3 style="font-size: 1.8rem; margin-bottom: 8px;">{{ record.location }}</h3>
+                        <p style="color: var(--text-muted);">Date Range: {{ record.start_date }} to {{ record.end_date }}</p>
+                        <p style="color: rgba(255,255,255,0.3); font-size: 0.85rem; margin-top: 4px;">Saved: {{ new Date(record.created_at).toLocaleString() }}</p>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="btn" style="padding: 8px 16px; font-size: 0.9rem; background: rgba(255,255,255,0.1);" @click="editRecord(record)">✏️ Edit</button>
+                        <button class="btn" style="padding: 8px 16px; font-size: 0.9rem; background: rgba(255,255,255,0.1);" @click="exportRecord(record.id)">⬇️ Export CSV</button>
+                        <button class="btn" style="padding: 8px 16px; font-size: 0.9rem; background: var(--error-bg); color: var(--error-text);" @click="deleteRecord(record.id)">🗑️ Delete</button>
+                    </div>
+                </div>
+
+                <!-- Temperature Data -->
+                <div style="margin-bottom: 24px; overflow-x: auto; padding-bottom: 10px;">
+                    <div style="display: flex; gap: 12px;">
+                        <div v-for="(date, i) in record.temperature_data.time" :key="i" class="glass-panel-inner" style="min-width: 100px; text-align: center; padding: 12px;">
+                            <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">{{ date.substring(5) }}</div>
+                            <div style="font-size: 1.5rem; margin-bottom: 4px;">{{ getWeatherIcon(record.temperature_data.weather_code?.[i] || 0) }}</div>
+                            <div style="font-weight: bold;">{{ record.temperature_data.temperature_2m_max[i] }}°</div>
+                            <div style="color: var(--text-muted); font-size: 0.9rem;">{{ record.temperature_data.temperature_2m_min[i] }}°</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- APIs Integration -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                    <div v-if="record.maps_url" class="glass-panel-inner" style="padding: 0; overflow: hidden; border-radius: 16px;">
+                        <div style="padding: 12px 16px; border-bottom: 1px solid var(--glass-border); font-weight: 500; display: flex; align-items: center; gap: 8px;">
+                            <span style="color: #4ade80;">📍 Google Maps</span>
+                        </div>
+                        <iframe :src="record.maps_url" style="width: 100%; height: 250px; border: none; display: block;" loading="lazy"></iframe>
+                    </div>
+
+                    <div v-if="record.youtube_url" class="glass-panel-inner" style="padding: 0; overflow: hidden; border-radius: 16px;">
+                        <div style="padding: 12px 16px; border-bottom: 1px solid var(--glass-border); font-weight: 500; display: flex; align-items: center; gap: 8px;">
+                            <span style="color: #f87171;">▶️ YouTube Videos</span>
+                        </div>
+                        <iframe :src="record.youtube_url" style="width: 100%; height: 250px; border: none; display: block;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
