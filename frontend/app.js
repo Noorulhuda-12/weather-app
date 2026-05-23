@@ -2,6 +2,8 @@ const { createApp, ref, reactive, onMounted } = Vue;
 
 const API_BASE = 'http://localhost:5000/api/weather';
 
+let weatherChart = null;
+
 const app = createApp({
     setup() {
         const activeTab = ref('frontend');
@@ -220,10 +222,81 @@ const app = createApp({
         };
 
         // Init
+        // Chart.js: Render weather trend chart when frontendWeather changes
+        const renderWeatherChart = () => {
+            const chartEl = document.getElementById('weatherTrendChart');
+            if (!chartEl || !frontendWeather.value || !frontendWeather.value.forecast) return;
+            const labels = frontendWeather.value.forecast.map(day => formatDate(day.date));
+            const maxTemps = frontendWeather.value.forecast.map(day => day.max);
+            const minTemps = frontendWeather.value.forecast.map(day => day.min);
+            if (weatherChart) {
+                weatherChart.destroy();
+            }
+            weatherChart = new Chart(chartEl, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Max Temp (°C)',
+                            data: maxTemps,
+                            borderColor: '#f87171',
+                            backgroundColor: 'rgba(248,113,113,0.1)',
+                            tension: 0.3,
+                            fill: true
+                        },
+                        {
+                            label: 'Min Temp (°C)',
+                            data: minTemps,
+                            borderColor: '#60a5fa',
+                            backgroundColor: 'rgba(96,165,250,0.1)',
+                            tension: 0.3,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {
+                                color: '#fff',
+                                font: { size: 14 }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        y: {
+                            ticks: { color: '#fff' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    }
+                }
+            });
+        };
+
         onMounted(() => {
             useCurrentLocation();
             initDates();
             fetchRecords();
+        });
+
+        // Watch for weather data changes to update chart
+        watch(
+            () => frontendWeather.value,
+            (val) => {
+                setTimeout(renderWeatherChart, 0);
+            }
+        );
+
+        // Clean up chart on unmount
+        onUnmounted(() => {
+            if (weatherChart) weatherChart.destroy();
         });
 
         return {
